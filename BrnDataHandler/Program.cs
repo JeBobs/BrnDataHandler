@@ -3,51 +3,75 @@ using System.Globalization;
 
 internal class Program
 {
-    // Switches
-    static bool debug = false;
+    // tokens
     static bool convertExtensions = false;
     static bool keepExtensions = true;
     static bool sortByType = false;
+    static bool debug = false;
 
     static readonly string debugPrefix = $"DEBUG:";
+
+    public static List<string> Directories = new();
+    public static List<string> Files = new();
+
+    delegate void Command();
 
     static void Main(string[] args)
     {
         if (args.Length > 0)
         {
-            List<string> directories = new List<string>();
-            List<string> files = new List<string>();
-            List<string> switches = new List<string>();
+            List<string> tokens = new List<string>();
+
+            Command command = Command_Help;
 
             foreach (var arg in args)
             {
                 Console.WriteLine($"Launched with argument {arg}");
 
                 if (Directory.Exists(arg))
-                    directories.Add(arg);
+                    Directories.Add(arg);
 
                 else if (File.Exists(arg))
-                    files.Add(arg);
+                    Files.Add(arg);
 
                 else
-                    switches.Add(arg.ToLower());
+                    tokens.Add(arg.ToLower());
 
                 // Really hacky system to do quick debugging.
                 // Gotta replace with a proper switch parsing system.
-                foreach (string sw in switches)
+                foreach (string tk in tokens)
                 {
-                    switch (sw)
+                    if (tk.StartsWith("--"))
                     {
-                        case "--convert-extensions":
-                            convertExtensions = true;
-                            keepExtensions = false;
-                            break;
-                        case "--keep-original-extensions":
-                            keepExtensions = true;
-                            break;
-                        case "--debug":
-                            debug = true;
-                            break;
+                        switch (tk) // Switches
+                        {
+                            case "--sort-by-type":
+                                sortByType = true;
+                                break;
+                            case "--convert-extensions":
+                                convertExtensions = true;
+                                keepExtensions = false;
+                                break;
+                            case "--keep-original-extensions":
+                                keepExtensions = true;
+                                break;
+                            case "--debug":
+                                debug = true;
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        switch (tk) // Commands
+                        {
+                            case "recover":
+                                // Process
+                                command = Command_Recover;
+                                break;
+                            case "convert-asset-endian":
+                                // Convert endian
+                                break;
+                        }
                     }
                 }
 
@@ -55,36 +79,59 @@ internal class Program
                     keepExtensions = false;
             }
 
-            foreach (string filePath in files)
-            {
-                ProcessFileAsync(filePath);
-            }
+            // Run delegate command
+            command();
+        }
+    }
 
-            foreach (string directoryPath in directories)
+    #region Commands
+    static void Command_Help()
+    {
+        // TODO: Help commmand
+        return;
+    }
+
+    static void Command_Recover()
+    {
+        if (Files.Count > 0 || Directories.Count > 0)
+        {
+            foreach (string filePath in Files)
             {
-                ProcessFolder(directoryPath);
+                RecoverFileAsync(filePath);
+            }
+            foreach (string directoryPath in Directories)
+            {
+                RecoverFolder(directoryPath);
             }
         }
         else
         {
-            ProcessFolder(Directory.GetCurrentDirectory());
+            RecoverFolder(Directory.GetCurrentDirectory());
         }
     }
 
-    static bool ProcessFolder(string directory)
+    static void Command_ConvertAssetEndian()
+    {
+
+    }
+#endregion
+
+    #region Recover
+
+    static bool RecoverFolder(string directory)
     {
         string[] filePaths = Directory.GetFiles(directory);
 
         foreach (string filePath in filePaths)
         {
-            ProcessFileAsync(filePath);
+            RecoverFileAsync(filePath);
         }
 
         return true;
     }
 
 
-    static async Task<bool> ProcessFileAsync(string filePath)
+    static async Task<bool> RecoverFileAsync(string filePath)
     {
         DataType type = IdentifyFileType(filePath);
 
@@ -183,6 +230,7 @@ internal class Program
     {
         ProcessBurnoutPNG(ParsePNG(filePath), out outPath);
     }
+#endregion
 
     #region General Data Handling
     static string GetRandomPrefix(string directoryPath)
@@ -327,8 +375,20 @@ internal class Program
     {
         return ParsePNG(new FileStream(filePath, FileMode.Open, FileAccess.Read), true);
     }
+
+    interface IFileInfo
+    {
+        public string path { get; set; }
+    }
+
+    struct IFilePNG : IFileInfo
+    {
+        public string path { get; set; }
+        public Vector2 Dimensions { get; set; }
+    }
     #endregion
 
+    #region Burnout Data Headers
     // Unused for the time being. Compile-time
     // const arrays don't exist in C#. Sadge
     static readonly int[] DataTypeHeaders = 
@@ -354,15 +414,5 @@ internal class Program
         VP6,            // MVhd
         SNS             // ��
     };
-
-    interface IFileInfo
-    {
-        public string path { get; set; }
-    }
-
-    struct IFilePNG : IFileInfo
-    {
-        public string path { get; set; }
-        public Vector2 Dimensions { get; set; }
-    }
+#endregion
 }
