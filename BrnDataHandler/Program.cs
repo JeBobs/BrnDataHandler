@@ -1,4 +1,7 @@
-﻿internal class Program
+﻿using System.Numerics;
+using System.Globalization;
+
+internal class Program
 {
     // Switches
     static bool debug = false;
@@ -6,7 +9,9 @@
     static bool keepExtensions = true;
     static bool sortByType = false;
 
-    private static void Main(string[] args)
+    static readonly string debugPrefix = $"DEBUG:";
+
+    static void Main(string[] args)
     {
         if (args.Length > 0)
         {
@@ -31,16 +36,23 @@
                 // Gotta replace with a proper switch parsing system.
                 foreach (string sw in switches)
                 {
-                    if (sw == "--debug")
-                        debug = true;
-
-                    if (sw == "--convert-extensions")
-                        convertExtensions = true;
-                        keepExtensions = false;
-
-                    if (sw == "--keep-original-extensions")
-                        keepExtensions = true;
+                    switch (sw)
+                    {
+                        case "--convert-extensions":
+                            convertExtensions = true;
+                            keepExtensions = false;
+                            break;
+                        case "--keep-original-extensions":
+                            keepExtensions = true;
+                            break;
+                        case "--debug":
+                            debug = true;
+                            break;
+                    }
                 }
+
+                if (convertExtensions)
+                    keepExtensions = false;
             }
 
             foreach (string filePath in files)
@@ -91,17 +103,23 @@
         
         if (convertExtensions)
         {
-            newPath = keepExtensions
-                ? $"{filePath}"
-                : $"{filePath.Substring(0, filePath.Length - currentExtension.Length)}";
+            //newPath = keepExtensions
+            //    ? $"{filePath}"
+            //    : $"{filePath.Substring(0, filePath.Length - currentExtension.Length)}";
+
+            newPath = filePath;
 
             currentExtension.Substring(1);
+
+            FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
 
             // Set extension
             // TODO: Further parse data to more accurately determine data 
             switch (type)
             {
                 case DataType.PNG:
+                    // TODO: Process PNGs properly
+                    // ProcessBurnoutPNG(ParsePNG(stream), out newPath);
                     newExtension = "png";
                     break;
                 case DataType.BUNDLE2:
@@ -125,8 +143,11 @@
                     newExtension = "SNS";
                     break;
             }
-            
-            newPath += $".{newExtension}";
+
+            stream.Close();
+
+            if (convertExtensions)
+                newPath = Path.ChangeExtension(newPath, $".{newExtension}");
 
             File.Move(filePath, newPath);
         }
@@ -134,60 +155,183 @@
         return true;
     }
 
-    static DataType IdentifyFileType(string filePath)
+    static bool ProcessBurnoutPNG(IFilePNG filePNG, out string outPath)
     {
-        FileStream stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-    
+        string directory = filePNG.path != null ? Path.GetDirectoryName(filePNG.path) : "";
+        
+        // Determine if PNG is PS3 art
+        switch (filePNG.Dimensions)
+        {
+            // PIC1.PNG
+            case Vector2 a when a.X == 1920 && a.Y == 1080:
+            case Vector2 b when b.X == 1280 && b.Y == 720:
+                filePNG.path =
+                    Path.Combine(directory, $"recovered_{GetRandomPrefix(directory)}PIC1.PNG");
+                break;
+        
+            //ICON0.PNG
+            case Vector2 c when c.X == 320 && c.Y == 176:
+                filePNG.path =
+                    Path.Combine(directory, $"recovered_{GetRandomPrefix(directory)}ICON0.PNG");
+                break;
+        }
+        outPath = filePNG.path;
+        return true;
+    }
+
+    static void ProcessBurnoutPNG(string filePath, out string outPath)
+    {
+        ProcessBurnoutPNG(ParsePNG(filePath), out outPath);
+    }
+
+    #region General Data Handling
+    static string GetRandomPrefix(string directoryPath)
+    {
+
+        Random random = new Random();
+        int randomNumber = random.Next(0000000, 9999999);
+
+        List<string> files = Directory.GetFiles(directoryPath).ToList();
+
+        // This is really non-performant and doesn't work 100% of the time.
+        // If somebody would like to improve this, be my guest.
+        // I have better things to do than figure out how to get a random
+        // number to not equal any number in a list.
+
+        for (int i = 0; i >= files.Count(); i++)
+        {
+            if (files[i].Contains("recovered_"))
+                files[i] = Path.GetFileNameWithoutExtension(files[i]).Substring(10, 5);
+            else
+                files.Remove(files[i]);
+        }
+
+        foreach (string number in files)
+        {
+            if (randomNumber.ToString() == number)
+                randomNumber = random.Next(0000000, 9999999);
+            else
+                files.Remove(number);
+        }
+
+        return $"{randomNumber}";
+    }
+
+    static DataType IdentifyFileType(FileStream stream, bool CloseStream = false)
+    {
         if (stream.CanRead)
         {
             byte[] headerBytes = new byte[4];
     
             if (stream.Read(headerBytes, 0, 2) < 2)
             {
-                stream.Close();
+                if (CloseStream)
+                    stream.Close();
                 return DataType.UNKNOWN;
             }
-            else if (BitConverter.ToUInt32(headerBytes) == 0)
+            if (BitConverter.ToUInt32(headerBytes) == 0)
             {
-                stream.Close();
+                if (CloseStream)
+                    stream.Close();
                 return DataType.SNS;
             }
-            else if (stream.Read(headerBytes, 2, 2) < 2)
+            if (stream.Read(headerBytes, 2, 2) < 2)
             {
-                stream.Close();
+                if (CloseStream)
+                    stream.Close();
                 return DataType.UNKNOWN;
             }
-            else
-            {
+            
+            if (CloseStream)
                 stream.Close();
 
-                uint header = BitConverter.ToUInt32(headerBytes);
-    
-                switch (header)
-                {
-                    case 1196314761:                // PNG
-                        return DataType.PNG;
-                    case 845442658:                 // BUNDLE2
-                        return DataType.BUNDLE2;
-                    case 4539219:                   // SELF
-                        return DataType.SELF;
-                    case 844645720:                 // XEX2
-                        return DataType.XEX2;
-                    case 1684559437:                // VP6
-                        return DataType.VP6;
-                    default:                        // UNKNOWN
-                        return DataType.UNKNOWN;
-                }
-            }
+            uint header = BitConverter.ToUInt32(headerBytes);
+
+            return header switch
+            {
+                1196314761 => DataType.PNG,         // PNG
+                845442658  => DataType.BUNDLE2,     // BUNDLE2
+                4539219    => DataType.SELF,        // SELF
+                844645720  => DataType.XEX2,        // XEX2
+                1684559437 => DataType.VP6,         // VP6
+                _          => DataType.UNKNOWN      // UNKNOWN
+            };
         }
     
         return DataType.NONE;
     }
 
+    static DataType IdentifyFileType(string filePath)
+    {
+        return IdentifyFileType(new FileStream(filePath, FileMode.Open, FileAccess.Read), true);
+    }
+
+    static IFilePNG ParsePNG(FileStream stream, bool CloseStream = false)
+    {
+        stream.Position = 0;
+
+        IFilePNG info = new IFilePNG
+        {
+            path = stream.Name,
+            Dimensions = new Vector2 { X = 0, Y = 0 }
+        };
+
+        //using (DeflateStream deflateStream = new DeflateStream(stream, CompressionMode.Decompress))
+
+        using (BinaryReader reader = new BinaryReader(stream))
+        {
+            // Check the PNG signature
+            uint header = reader.ReadUInt32();
+            
+            if (debug) 
+                Console.WriteLine($"{debugPrefix} ParsePNG - prefix is {header}");
+            
+            try
+            {
+                if (header != 1196314761)
+                    throw new InvalidDataException("File passed to the PNG parser is not a PNG file!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+
+            // Read the rest of the header
+            //reader.ReadBytes(4);
+
+            reader.ReadInt32();
+
+            Vector2 dimensions = new Vector2 
+            { 
+                X = int.Parse(reader.ReadBytes(4).ToString(), NumberStyles.HexNumber), 
+                Y = int.Parse(reader.ReadBytes(4).ToString(), NumberStyles.HexNumber)
+            };
+
+            info.Dimensions = dimensions;
+
+            if (debug)
+                Console.WriteLine($"{debugPrefix} ParsePNG - dimensions are {info.Dimensions.X}x{info.Dimensions.Y}");
+
+            // Close our internal streams
+            reader.Close();
+            //deflateStream.Close();
+        }
+
+        if (CloseStream) 
+            stream.Close();
+
+        return info;
+    }
+
+    static IFilePNG ParsePNG(string filePath)
+    {
+        return ParsePNG(new FileStream(filePath, FileMode.Open, FileAccess.Read), true);
+    }
+    #endregion
 
     // Unused for the time being. Compile-time
     // const arrays don't exist in C#. Sadge
-    readonly static int[] DataTypeHeaders = 
+    static readonly int[] DataTypeHeaders = 
     {
         -1,             // NONE
         -1,             // UNKNOWN
@@ -210,4 +354,15 @@
         VP6,            // MVhd
         SNS             // ��
     };
+
+    interface IFileInfo
+    {
+        public string path { get; set; }
+    }
+
+    struct IFilePNG : IFileInfo
+    {
+        public string path { get; set; }
+        public Vector2 Dimensions { get; set; }
+    }
 }
