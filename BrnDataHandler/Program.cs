@@ -9,7 +9,9 @@ internal class Brn
 
     static void Main(string[] args)
     {
-        C_DataHandler = new();
-        C_MainInstance = new(args);
+        C_DataHandler  = new();
+        C_MainInstance = new();
+
+        C_MainInstance.Initialize(args);
     }
 }

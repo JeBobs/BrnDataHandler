@@ -20,7 +20,12 @@ namespace BrnDataHandler
 
         //delegate void Command();
 
-        public MainInstance(string[] args)
+        public MainInstance()
+        {
+
+        }
+
+        public void Initialize(string[] args)
         {
             if (args.Length > 0)
             {
