@@ -1,10 +1,10 @@
 ﻿namespace BrnDataHandler.Commands
 {
-    internal class Command_Null : Command
+    internal class Command_Help : Command
     {
         public override bool Run()
         {
-            return true;
+            throw new NotImplementedException();
         }
     }
 }

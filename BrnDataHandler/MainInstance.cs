@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using BrnDataHandler.Commands;
 
 namespace BrnDataHandler
 {
@@ -19,11 +14,6 @@ namespace BrnDataHandler
         public List<string> Files = new();
 
         //delegate void Command();
-
-        public MainInstance()
-        {
-
-        }
 
         public void Initialize(string[] args)
         {
@@ -74,11 +64,13 @@ namespace BrnDataHandler
                             switch (tk) // Commands
                             {
                                 case "recover":
-                                    // Process
                                     command = new Commands.Command_Recover();
                                     break;
                                 case "convert-asset-endian":
-                                    // Convert endian
+                                    command = new Command_ConvertAssetEndian();
+                                    break;
+                                case "help":
+                                    command = new Command_Help();
                                     break;
                             }
                         }
