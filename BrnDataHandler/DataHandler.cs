@@ -1,5 +1,4 @@
-﻿using System.Globalization;
-using System.Numerics;
+﻿using System.Numerics;
 
 namespace BrnDataHandler
 {
@@ -18,7 +17,7 @@ namespace BrnDataHandler
             // I have better things to do than figure out how to get a random
             // number to not equal any number in a list.
 
-            for (int i = 0; i >= files.Count(); i++)
+            for (int i = 0; i < files.Count(); i++)
             {
                 if (files[i].Contains("recovered_"))
                     files[i] = Path.GetFileNameWithoutExtension(files[i]).Substring(10, 5);
@@ -26,12 +25,13 @@ namespace BrnDataHandler
                     files.Remove(files[i]);
             }
 
+            if (files.Count == 0)
+                return $"{randomNumber}";
+
             foreach (string number in files)
             {
                 if (randomNumber.ToString() == number)
                     randomNumber = random.Next(0000000, 9999999);
-                else
-                    files.Remove(number);
             }
 
             return $"{randomNumber}";
@@ -39,46 +39,44 @@ namespace BrnDataHandler
 
         public DataType IdentifyFileType(FileStream stream, bool CloseStream = false)
         {
-            if (stream.CanRead)
+            if (!stream.CanRead) return DataType.NONE;
+
+            byte[] headerBytes = new byte[4];
+
+            if (stream.Read(headerBytes, 0, 2) < 2)
             {
-                byte[] headerBytes = new byte[4];
-
-                if (stream.Read(headerBytes, 0, 2) < 2)
-                {
-                    if (CloseStream)
-                        stream.Close();
-                    return DataType.UNKNOWN;
-                }
-                if (BitConverter.ToUInt32(headerBytes) == 0)
-                {
-                    if (CloseStream)
-                        stream.Close();
-                    return DataType.SNS;
-                }
-                if (stream.Read(headerBytes, 2, 2) < 2)
-                {
-                    if (CloseStream)
-                        stream.Close();
-                    return DataType.UNKNOWN;
-                }
-
                 if (CloseStream)
                     stream.Close();
-
-                uint header = BitConverter.ToUInt32(headerBytes);
-
-                return header switch
-                {
-                    1196314761 => DataType.PNG,         // PNG
-                    845442658 => DataType.BUNDLE2,     // BUNDLE2
-                    4539219 => DataType.SELF,        // SELF
-                    844645720 => DataType.XEX2,        // XEX2
-                    1684559437 => DataType.VP6,         // VP6
-                    _ => DataType.UNKNOWN      // UNKNOWN
-                };
+                return DataType.UNKNOWN;
+            }
+            if (BitConverter.ToUInt32(headerBytes) == 0)
+            {
+                if (CloseStream)
+                    stream.Close();
+                return DataType.SNS;
+            }
+            if (stream.Read(headerBytes, 2, 2) < 2)
+            {
+                if (CloseStream)
+                    stream.Close();
+                return DataType.UNKNOWN;
             }
 
-            return DataType.NONE;
+            if (CloseStream)
+                stream.Close();
+
+            uint header = BitConverter.ToUInt32(headerBytes);
+
+            return header switch
+            {
+                1196314761 => DataType.PNG,         // PNG
+                845442658 => DataType.BUNDLE2,     // BUNDLE2
+                4539219 => DataType.SELF,        // SELF
+                844645720 => DataType.XEX2,        // XEX2
+                1684559437 => DataType.VP6,         // VP6
+                _ => DataType.UNKNOWN      // UNKNOWN
+            };
+
         }
 
         public DataType IdentifyFileType(string filePath)
@@ -92,49 +90,43 @@ namespace BrnDataHandler
 
             IFilePNG info = new IFilePNG
             {
-                path = stream.Name,
+                Path = stream.Name,
                 Dimensions = new Vector2 { X = 0, Y = 0 }
             };
 
-            //using (DeflateStream deflateStream = new DeflateStream(stream, CompressionMode.Decompress))
-
-            using (BinaryReader reader = new BinaryReader(stream))
+            using (BinaryReader br = new BinaryReader(stream))
             {
-                // Check the PNG signature
-                uint header = reader.ReadUInt32();
+                // Read the bytes of the file into a byte array
+                byte[] bytes = br.ReadBytes((int)stream.Length);
 
-                if (Brn.C_MainInstance.debug)
-                    Console.WriteLine($"{Brn.debugPrefix} ParsePNG - prefix is {header}");
-
-                try
+                // Check the first 8 bytes of the file to verify that it is a PNG file
+                if (bytes[0] == 137 && 
+                    bytes[1] == 80 && 
+                    bytes[2] == 78 && 
+                    bytes[3] == 71 && 
+                    bytes[4] == 13 && 
+                    bytes[5] == 10 && 
+                    bytes[6] == 26 && 
+                    bytes[7] == 10)
                 {
-                    if (header != 1196314761)
-                        throw new InvalidDataException("File passed to the PNG parser is not a PNG file!");
+                    // The width and height are stored in the bytes starting at position 16 (9th element in the array)
+                    // The width is stored in 4 bytes and the height is stored in 4 bytes, so we need to read 8 bytes total
+                    int width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | (bytes[19]);
+                    int height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | (bytes[23]);
+
+                    if (Brn.C_MainInstance.debug)
+                        Console.WriteLine($"{Brn.debugPrefix} Width: {width} - Height: {height}" );
+
+                    info.Dimensions = new Vector2()
+                    {
+                        X = width,
+                        Y = height
+                    };
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.WriteLine($"ERROR: {ex.Message}");
+                    Console.WriteLine("ERROR: Tried to parse a non-PNG file as a PNG.");
                 }
-
-                // Read the rest of the header
-                //reader.ReadBytes(4);
-
-                reader.ReadInt32();
-
-                Vector2 dimensions = new Vector2
-                {
-                    X = int.Parse(reader.ReadBytes(4).ToString(), NumberStyles.HexNumber),
-                    Y = int.Parse(reader.ReadBytes(4).ToString(), NumberStyles.HexNumber)
-                };
-
-                info.Dimensions = dimensions;
-
-                if (Brn.C_MainInstance.debug)
-                    Console.WriteLine($"{Brn.debugPrefix} ParsePNG - dimensions are {info.Dimensions.X}x{info.Dimensions.Y}");
-
-                // Close our internal streams
-                reader.Close();
-                //deflateStream.Close();
             }
 
             if (CloseStream)
@@ -150,12 +142,12 @@ namespace BrnDataHandler
 
         public interface IFileInfo
         {
-            public string path { get; set; }
+            public string Path { get; set; }
         }
 
         public struct IFilePNG : IFileInfo
         {
-            public string path { get; set; }
+            public string Path { get; set; }
             public Vector2 Dimensions { get; set; }
         }
 

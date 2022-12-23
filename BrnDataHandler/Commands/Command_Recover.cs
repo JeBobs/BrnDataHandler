@@ -1,6 +1,4 @@
-﻿using System.Numerics;
-
-namespace BrnDataHandler.Commands
+﻿namespace BrnDataHandler.Commands
 {
     internal class Command_Recover : Command
     {
@@ -71,12 +69,12 @@ namespace BrnDataHandler.Commands
                 {
                     case DataHandler.DataType.PNG:
                         // TODO: Process PNGs properly
-                        // ProcessBurnoutPNG(ParsePNG(stream), out newPath);
+                        ProcessBurnoutPNG(Brn.C_DataHandler.ParsePNG(stream), out newPath);
                         newExtension = "png";
                         break;
                     case DataHandler.DataType.BUNDLE2:
                         newExtension =
-                            currentExtension == "BIN"
+                            currentExtension    == "BIN"
                             || currentExtension == "BNDL"
                             || currentExtension == "DAT"
                                 ? currentExtension
@@ -109,25 +107,30 @@ namespace BrnDataHandler.Commands
 
         public bool ProcessBurnoutPNG(DataHandler.IFilePNG filePNG, out string outPath)
         {
-            string directory = filePNG.path != null ? Path.GetDirectoryName(filePNG.path) : "";
+            string directory = filePNG.Path != null ? Path.GetDirectoryName(filePNG.Path) : "";
 
             // Determine if PNG is PS3 art
             switch (filePNG.Dimensions)
             {
                 // PIC1.PNG
-                case Vector2 a when a.X == 1920 && a.Y == 1080:
-                case Vector2 b when b.X == 1280 && b.Y == 720:
-                    filePNG.path =
-                        Path.Combine(directory, $"recovered_{Brn.C_DataHandler.GetRandomPrefix(directory)}PIC1.PNG");
+                case { X: 1920, Y: 1080 }:
+                case { X: 1280, Y: 720 }:
+                    filePNG.Path =
+                        Path.Combine(directory, $"recovered_{Brn.C_DataHandler.GetRandomPrefix(directory)}_PIC1.PNG");
                     break;
 
-                //ICON0.PNG
-                case Vector2 c when c.X == 320 && c.Y == 176:
-                    filePNG.path =
-                        Path.Combine(directory, $"recovered_{Brn.C_DataHandler.GetRandomPrefix(directory)}ICON0.PNG");
+                // ICON0.PNG
+                case { X: 320, Y: 176 }:
+                    filePNG.Path =
+                        Path.Combine(directory, $"recovered_{Brn.C_DataHandler.GetRandomPrefix(directory)}_ICON0.PNG");
+                    break;
+                // Unknown Name (PS3 Logo)
+                case { X: 640, Y: 25 }:
+                    filePNG.Path =
+                        Path.Combine(directory, $"recovered_{Brn.C_DataHandler.GetRandomPrefix(directory)}_PS3.PNG");
                     break;
             }
-            outPath = filePNG.path;
+            outPath = filePNG.Path;
             return true;
         }
 
